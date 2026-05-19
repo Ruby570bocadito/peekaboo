@@ -1,0 +1,35 @@
+version: "3.9"
+
+services:
+  victim:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.victim
+    image: peekaboo-victim
+    container_name: peekaboo-target
+    tty: true
+    stdin_open: true
+    privileged: true
+    volumes:
+      - ../peekaboo:/tools/peekaboo:ro
+    networks:
+      - peekaboo-net
+
+  # For testing: run peekaboo in one container against victim
+  attacker:
+    image: ubuntu:24.04
+    container_name: peekaboo-attacker
+    tty: true
+    stdin_open: true
+    command: sleep infinity
+    volumes:
+      - ../peekaboo:/tools/peekaboo:ro
+    networks:
+      - peekaboo-net
+
+networks:
+  peekaboo-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.31.0.0/24
