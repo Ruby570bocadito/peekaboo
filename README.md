@@ -1,140 +1,286 @@
-# peekaboo — Linux Privilege Escalation Auto-Exploiter
+<p align="center">
+  <img src="https://capsule-render.vercel.app/api?type=rect&color=0A66C2&height=100&section=header&text=peekaboo&fontSize=40&fontColor=ffffff&fontAlign=50&fontAlignY=50&animation=fadeIn" alt="header"/>
+</p>
 
-Single-binary, zero-dependency Go tool that enumerates and automatically exploits
-Linux privilege escalation vectors. Built for CTF and real pentesting.
+<p align="center">
+  <strong>Linux Privilege Escalation Auto-Exploiter</strong><br/>
+  <em>Single binary. Zero dependencies. Auto-root.</em>
+</p>
 
-ruby570bocadito © 2026 — MIT License
+<p align="center">
+  <img src="https://img.shields.io/badge/Go-1.26-00ADD8?style=for-the-badge&logo=go&logoColor=white" alt="Go"/>
+  <img src="https://img.shields.io/badge/status-active-green?style=for-the-badge" alt="Status"/>
+  <img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="License"/>
+  <img src="https://img.shields.io/badge/size-2MB-orange?style=for-the-badge" alt="Size"/>
+  <img src="https://img.shields.io/badge/deps-zero-9cf?style=for-the-badge" alt="Zero Dependencies"/>
+</p>
+
+<p align="center">
+  <img src="https://komarev.com/ghpvc/?username=Ruby570bocadito&label=Downloads&color=0A66C2&style=flat" alt="downloads"/>
+</p>
 
 ---
 
-## Quick Demo
+## 🎯 What is peekaboo?
+
+**peekaboo** is an automated Linux privilege escalation tool that scans a target system, identifies misconfigurations, and **automatically exploits them** to gain root access.
+
+It works in **3 phases**: scan → enumerate → exploit. No network calls. No dependencies. Just drop the binary and run.
+
+```
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│   SCAN      │───▶│  ENUMERATE  │───▶│   EXPLOIT   │
+│  (read-only)│    │ GTFOBins DB │    │ Auto-root   │
+└─────────────┘    └─────────────┘    └─────────────┘
+     10+ vectors         60+ bins        safe→danger
+```
+
+Built for **CTF competitions**, **pentesting engagements**, and **red team operations**.
+
+---
+
+## ⚡ Features
+
+| Vector | Detection | Exploitation |
+|--------|-----------|--------------|
+| **SUID Binaries** | Scans 10+ directories for SUID bit | GTFOBins commands for 60+ binaries |
+| **Sudo Misconfig** | Parses `sudo -l` output | NOPASSWD + GTFOBins auto-exploit |
+| **Writable Cron** | Checks cron dirs + referenced scripts | Reverse shell injection |
+| **Docker Breakout** | Detects docker group membership | `docker run -v /:/mnt` escape |
+| **Capabilities** | Reads `/proc/self/status` | cap_setuid exploitation |
+| **NFS no_root_squash** | Parses `/etc/exports` | Mount + own files as root |
+| **Writable PATH** | Checks PATH directories | Binary planting detection |
+| **Systemd Services** | Scans `/etc/systemd/system` | Service hijacking |
+| **/etc/passwd** | Permission check | Append root user |
+| **/etc/shadow** | Permission check | Crack or overwrite hash |
+
+---
+
+## 🚀 Quick Start
+
+### Installation
 
 ```bash
-# Build
+# Clone
+git clone https://github.com/Ruby570bocadito/peekaboo.git
+cd peekaboo
+
+# Build (requires Go 1.26+)
 go build -o peekaboo .
 
+# Or download pre-built binary from Releases
+```
+
+### Usage
+
+```bash
 # Scan only (safe, read-only)
 ./peekaboo
 
-# Auto-exploit (tries vectors automatically)
+# Auto-exploit found vectors
 ./peekaboo --exploit
 
-# Auto-exploit + load rooteame rootkit on success
-./peekaboo --exploit --rooteame ../rooteame/src/rooteame.ko
+# Auto-exploit with risk limit
+./peekaboo --exploit --risk=medium
 
-# JSON output for CI/CD integration
+# Specific vector only
+./peekaboo --vector=suid,sudo
+
+# JSON output for automation
 ./peekaboo --json
+
+# Quiet mode (exit code: 0=root, 1=fail)
+./peekaboo --quiet
 ```
 
 ---
 
-## Features
+## 🎬 Demo
 
-| Category | Vectors | Technique |
-|----------|---------|-----------|
-| **SUID** | python, perl, php, ruby, lua, node, bash, find, vim, less, awk, sed, gdb, nmap, tcpdump, tar, zip, rsync, socat, git, ssh, more, man, ... | GTFOBins commands |
-| **Sudo** | find, awk, vim, less, nmap, tcpdump, tar, zip, rsync, git, ssh, ... | NOPASSWD + GTFOBins |
-| **Files** | /etc/passwd, /etc/shadow | Append root user / crack hash |
-| **Cron** | /etc/cron.d/*, /var/spool/cron/* | Inject reverse shell |
-| **Docker** | docker group membership | `docker run -v /:/mnt` breakout |
-| **Capabilities** | cap_sys_ptrace, cap_dac_override | Process injection |
-| **NFS** | no_root_squash | Mount + own files |
-| **PATH** | Writable directories in PATH | Binary planting |
-| **Services** | Writable systemd units | Service hijacking |
+### Scan Phase
 
-## Architecture
+```
+ ╔══════════════════════════════════════════╗
+ ║     peekaboo — Linux PrivEsc AutoPwn    ║
+ ║     ruby570bocadito (c) 2026            ║
+ ╚══════════════════════════════════════════╝
+
+  UID: testuser     PID: 1337     Host: target
+
+  [1/3] Scanning system...
+  [!] SUID → SUID binary: python3.10 (GTFOBins: true) (/usr/bin/python3.10)
+  [.] SUID → SUID binary: find (GTFOBins: true) (/usr/bin/find)
+  [!] SUDO → NOPASSWD sudo: /usr/bin/find → find (/usr/bin/find)
+  [!] CRON → Writable cron job — inject command (/etc/cron.d/backup)
+  [!] FILE → Writable /etc/passwd — inject root user (/etc/passwd)
+  [!] FILE → Readable /etc/shadow — crack root hash (/etc/shadow)
+  [!] NFS  → NFS export with no_root_squash (/shared *(rw,no_root_squash))
+
+  [2/3] Enumerating vectors...
+
+  ── Findings ──
+  [!] SUID → SUID binary: python3.10 (GTFOBins: true) (/usr/bin/python3.10)
+  [!] SUDO → NOPASSWD sudo: /usr/bin/find → find (/usr/bin/find)
+  [!] CRON → Writable cron job — inject command (/etc/cron.d/backup)
+  [!] FILE → Writable /etc/passwd — inject root user (/etc/passwd)
+
+  [3/3] Exploiting... (max risk: MEDIUM)
+  [try] SUID python3.10
+  [!] ROOT OBTAINED
+  Vector: SUID python3.10
+  [+] Root shell starting...
+```
+
+### All Commands
+
+```bash
+./peekaboo                              # Enum only (no exploit)
+./peekaboo --exploit                    # Auto-exploit safe vectors first
+./peekaboo --exploit --risk=safe        # Only SAFE risks
+./peekaboo --exploit --risk=danger      # Everything (including dangerous)
+./peekaboo --vector=suid,sudo,cron      # Specific vectors only
+./peekaboo --exploit --one-shot         # Stop after first success
+./peekaboo --json                       # Machine-readable output
+./peekaboo --quiet                      # Exit code only (0=root, 1=fail)
+./peekaboo --rooteame ./rooteame.ko     # Load rootkit on success
+./peekaboo --stealth                    # Slow scan (evade IDS)
+```
+
+---
+
+## 🏗️ Architecture
+
+### Engine Flow
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        peekaboo                              │
+├─────────────────────────────────────────────────────────────┤
+│  main.go          CLI flags + orchestration                  │
+│  universe.go      Types, risk levels, output formatting      │
+│  scanner.go       FASE 1 — passive discovery (10+ checkers)  │
+│  enumerate.go     FASE 2 — findings → exploit vectors        │
+│  exploit.go       FASE 3 — execute vectors (safe→danger)     │
+│  gtfobins.go      Offline GTFOBins database (~60 binaries)   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Risk-Based Execution Order
+
+```
+SAFE ──▶ LOW ──▶ MEDIUM ──▶ HIGH ──▶ DANGER
+ │        │         │         │         │
+ │        │         │         │         └─ shadow overwrite
+ │        │         │         └─ passwd injection, cron inject
+ │        │         └─ cap_sys_ptrace
+ │        └─ find SUID, awk sudo
+ └─ python SUID spawn shell
+```
+
+### File Structure
 
 ```
 peekaboo/
-├── main.go          CLI flags + engine orchestration
-├── universe.go      Types, risk levels, output formatting
-├── scanner.go       FASE 1 — passive discovery (10+ checkers)
-├── enumerate.go     FASE 2 — findings → exploit vectors
-├── exploit.go       FASE 3 — execute vectors (safe→danger)
-├── gtfobins.go      Offline GTFOBins database (~60 binaries)
-├── go.mod
+├── main.go              CLI entry point + orchestration
+├── scanner.go           10 vulnerability scanners
+├── enumerate.go         Findings → exploit vectors
+├── exploit.go           Exploitation engine
+├── gtfobins.go          Embedded GTFOBins database
+├── universe.go          Types, constants, formatting
+├── peekaboo_test.go     Unit tests (9 tests)
 │
 ├── docker/
-│   ├── Dockerfile.victim     Vulnerable VM (7 deliberate flaws)
-│   └── docker-compose.yml    Test environment
+│   ├── Dockerfile.vulnerable   Target with 10 deliberate flaws
+│   ├── Dockerfile.clean        Secure baseline system
+│   ├── Dockerfile.edgecases    Edge case scenarios
+│   ├── docker-compose.yml      Test network
+│   └── test_runner.sh          Automated test runner
+│
+├── brain/               Development documentation
+│   └── SESSION_*.md
 │
 └── README.md
 ```
 
-### Engine flow
+---
 
-```
-1. SCAN      → filesystem, sudo, cron, docker, caps, PATH
-2. ENUM      → match findings against GTFOBins database
-3. SORT      → order by risk (SAFE → LOW → MEDIUM → HIGH → DANGER)
-4. EXPLOIT   → try each vector until root or exhausted
-5. RESULT    → spawn root shell or print top vectors
-```
-
-## Commands
+## 🧪 Docker Testing
 
 ```bash
-peekaboo                              # Enum only (no exploit)
-peekaboo --exploit                    # Auto-exploit safe vectors first
-peekaboo --exploit --risk=safe        # Only SAFE risks (Python SUID etc.)
-peekaboo --exploit --risk=danger      # Everything (kernel exploits, shadow write)
-peekaboo --vector=suid,sudo,cron      # Specific vectors only
-peekaboo --exploit --one-shot         # Stop after first success
-peekaboo --json                       # Machine-readable output
-peekaboo --quiet                      # Exit code only (0=root, 1=fail)
-peekaboo --rooteame ./rooteame.ko     # Load rootkit on success
-peekaboo --stealth                    # Slow scan (evade IDS)
+# Build all test images
+cd docker
+docker compose build
+
+# Start test network (vulnerable + clean + edgecases)
+docker compose up -d
+
+# Run peekaboo on vulnerable target
+docker exec peekaboo-vulnerable peekaboo --exploit
+
+# Run on clean system (should find minimal vectors)
+docker exec peekaboo-clean peekaboo
+
+# Run edge case scenarios
+docker exec peekaboo-edgecases peekaboo --vector=sudo
+
+# Run full test suite
+./test_runner.sh
 ```
 
-## Docker Test
+---
 
-```bash
-# Build vulnerable VM
-docker compose -f docker/docker-compose.yml build
+## 📊 Risk Levels
 
-# Start target + attacker
-docker compose -f docker/docker-compose.yml up -d
+| Level | Examples | Auto-Exploit? | Filesystem Changes? |
+|-------|----------|---------------|---------------------|
+| **SAFE** | python SUID → shell | ✅ Yes | No |
+| **LOW** | find SUID, awk sudo | ✅ Yes | Minor |
+| **MEDIUM** | cap_sys_ptrace | ⚠️ Optional | May trigger alerts |
+| **HIGH** | passwd injection, cron inject, docker breakout | ⚠️ Optional | Yes |
+| **DANGER** | shadow overwrite, kernel exploits | ❌ Manual only | Yes, may crash |
 
-# Run peekaboo on the vulnerable VM
-docker exec peekaboo-target /tools/peekaboo --exploit
+---
 
-# Manual test
-docker exec -it peekaboo-target bash
-su user
-/tools/peekaboo --exploit
-```
+## 📦 GTFOBins Database
 
-## GTFOBins Database
+**60+ binaries** with exploitation commands, **embedded in the binary**. No network calls at runtime. Works air-gapped.
 
-60+ binaries with exploitation commands, embedded in the binary.
-No network calls at runtime. Works air-gapped.
+<details>
+<summary><b>Click to see all supported binaries</b></summary>
 
-Covers: python, perl, php, ruby, lua, node, bash, dash, zsh, ksh, fish,
-find, vim, vi, less, more, man, awk, gawk, nawk, sed, gdb, nmap, tcpdump,
-tar, zip, unzip, rsync, scp, socat, env, nice, timeout, stdbuf, watch, make,
-pip, npm, gem, git, ssh, ed, ex, ftp, wall, systemctl, journalctl, mysql,
-psql, sqlite3, apache2, lxc, docker, cpan.
+**Shell binaries (SUID):** python, python2, python3, python3.8-3.13, perl, perl5, php, php5-8.2, ruby, ruby2-3, lua, lua5.3-5.4, node, nodejs, bash, dash, zsh, ksh, fish, sh
 
-## Risk Levels
+**Sudo binaries:** find, vim, vi, less, more, man, awk, gawk, nawk, sed, gdb, nmap, tcpdump, tar, zip, unzip, rsync, scp, socat, env, nice, timeout, stdbuf, watch, make, pip, pip3, npm, gem, git, ssh, docker, lxc, apache2, cpan, ed, ex, ftp, wall, systemctl, journalctl, mysql, psql, sqlite3
 
-| Level | Examples | Safe to auto-exploit? |
-|-------|----------|----------------------|
-| **SAFE** | python SUID spawn shell | No filesystem modification |
-| **LOW** | find SUID, awk sudo | Minor artifacts |
-| **MEDIUM** | cap_sys_ptrace | May trigger alerts |
-| **HIGH** | passwd injection, cron inject, docker breakout | Modifies system files |
-| **DANGER** | shadow overwrite, kernel CVE launcher | May crash or corrupt |
+</details>
 
-## Stack
+---
 
-| Component | Choice |
-|-----------|--------|
-| Language | Go 1.26 |
-| Dependencies | **Zero** (stdlib only) |
-| GTFOBins DB | Embedded in binary |
-| Output | Colored text + JSON |
-| Binary size | ~3.4 MB (unstripped), ~2 MB stripped |
+## 🗺️ Roadmap
 
-## Disclaimer
+- [ ] Kernel CVE detection module (Dirty Pipe, PwnKit, etc.)
+- [ ] GTFOBins auto-update from official repository
+- [ ] SSH key detection and credential scanning
+- [ ] `--lhost`/`--lport` flags for reverse shell payloads
+- [ ] Structured logging with levels (DEBUG, INFO, WARN, ERROR)
+- [ ] CSV/HTML report export
+- [ ] `--dry-run` mode (predict without executing)
+- [ ] Signal handling (Ctrl+C cleanup)
+- [ ] Windows privilege escalation support
+- [ ] Integration with C2 frameworks (BTY)
 
-For authorized security testing only. Misuse may violate laws.
+---
+
+## ⚠️ Disclaimer
+
+This tool is designed for **authorized security testing**, **CTF competitions**, and **educational purposes** only.
+
+- Use only on systems you own or have explicit written permission to test
+- Misuse may violate local and international laws
+- The author is not responsible for any misuse or damage caused by this tool
+
+---
+
+<p align="center">
+  <sub>Built with ❤️ by <a href="https://github.com/Ruby570bocadito">Ruby570bocadito</a></sub>
+</p>
