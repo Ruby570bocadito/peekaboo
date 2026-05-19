@@ -356,6 +356,17 @@ func scanNFS(p *Peekaboo) {
 func scanWritablePath(p *Peekaboo) {
 	path := os.Getenv("PATH")
 	uid := uint32(os.Getuid())
+
+	// Standard system directories — skip unless we own them
+	systemDirs := map[string]bool{
+		"/usr/local/sbin": true,
+		"/usr/local/bin":  true,
+		"/usr/sbin":       true,
+		"/usr/bin":        true,
+		"/sbin":           true,
+		"/bin":            true,
+	}
+
 	for _, dir := range strings.Split(path, ":") {
 		if dir == "" {
 			dir = "."
@@ -363,6 +374,13 @@ func scanWritablePath(p *Peekaboo) {
 		info, err := os.Lstat(dir)
 		if err != nil {
 			continue
+		}
+		// Skip standard system dirs unless we own them
+		if systemDirs[dir] {
+			stat, ok := info.Sys().(*syscall.Stat_t)
+			if !ok || stat.Uid != uid {
+				continue
+			}
 		}
 		if info.Mode().Perm()&0200 != 0 {
 			// Only flag if we don't own it
@@ -411,8 +429,6 @@ func isWritableByCurrentUser(path string) bool {
 func scanServices(p *Peekaboo) {
 	dirs := []string{
 		"/etc/systemd/system",
-		"/usr/lib/systemd/system",
-		"/lib/systemd/system",
 	}
 	for _, dir := range dirs {
 		entries, err := os.ReadDir(dir)
@@ -428,7 +444,7 @@ func scanServices(p *Peekaboo) {
 			if info == nil {
 				continue
 			}
-			if info.Mode().Perm()&0200 != 0 {
+			if isWritableByCurrentUser(full) {
 				addFinding(p, "SERVICE", full,
 					"Writable systemd service — hijack execution",
 					RiskHigh, true)

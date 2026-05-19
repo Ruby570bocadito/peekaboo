@@ -1,6 +1,9 @@
 package main
 
-import "strings"
+import (
+	"path/filepath"
+	"strings"
+)
 
 // ================================================================
 // FASE 2 — Enumeration: scanner findings → exploit vectors
@@ -22,9 +25,7 @@ func enumerateAll(p *Peekaboo) {
 			if f.Target == "/etc/passwd" {
 				enumeratePasswd(p)
 			}
-			if f.Target == "/etc/shadow" {
-				enumerateShadow(p, f) // unused for now
-			}
+			// /etc/shadow — readable shadow is reported but no auto-exploit
 		case "DOCKER":
 			enumerateDocker(p)
 		case "CAPS":
@@ -150,11 +151,6 @@ func enumeratePasswd(p *Peekaboo) {
 		}, nil)
 }
 
-// --- Shadow enumeration ---
-func enumerateShadow(p *Peekaboo, f Finding) {
-	// Unused for now — exploitShadow would crack or replace hash
-}
-
 // --- Docker enumeration ---
 func enumerateDocker(p *Peekaboo) {
 	addVector(p, "docker breakout", "docker", "/var/run/docker.sock",
@@ -171,10 +167,5 @@ func enumerateNFS(p *Peekaboo, f Finding) {
 
 // Helper
 func extractBinName(path string) string {
-	for i := len(path) - 1; i >= 0; i-- {
-		if path[i] == '/' {
-			return path[i+1:]
-		}
-	}
-	return path
+	return filepath.Base(path)
 }
