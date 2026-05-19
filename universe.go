@@ -76,14 +76,19 @@ type ExploitResult struct {
 }
 
 type Options struct {
-	Exploit   bool
-	MaxRisk   RiskLevel
-	Vector    string
-	JSON      bool
-	Quiet     bool
-	Rooteame  string
-	Stealth   bool
-	OneShot   bool
+	Exploit      bool
+	MaxRisk      RiskLevel
+	Vector       string
+	JSON         bool
+	Quiet        bool
+	Rooteame     string
+	Stealth      bool
+	OneShot      bool
+	LHost        string
+	LPort        string
+	DryRun       bool
+	LogFormat    string
+	UpdateGTFO   bool
 }
 
 type Peekaboo struct {

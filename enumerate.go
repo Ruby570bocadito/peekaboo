@@ -25,13 +25,15 @@ func enumerateAll(p *Peekaboo) {
 			if f.Target == "/etc/passwd" {
 				enumeratePasswd(p)
 			}
-			// /etc/shadow — readable shadow is reported but no auto-exploit
 		case "DOCKER":
 			enumerateDocker(p)
 		case "CAPS":
-			// Capabilities — only add if we have an exploit path
 		case "NFS":
 			enumerateNFS(p, f)
+		case "KERNEL":
+			enumerateKernelCVE(p, f)
+		case "CRED":
+			enumerateCredential(p, f)
 		case "PATH":
 		case "SERVICE":
 		default:
@@ -163,6 +165,29 @@ func enumerateDocker(p *Peekaboo) {
 // --- NFS enumeration ---
 func enumerateNFS(p *Peekaboo, f Finding) {
 	// todo
+}
+
+// --- Kernel CVE enumeration ---
+func enumerateKernelCVE(p *Peekaboo, f Finding) {
+	addVector(p, f.Target, "kernel", f.Target,
+		"Download exploit from exploit-db or compile separately", f.Risk,
+		func() *ExploitResult {
+			return exploitKernelCVE(f.Target, f.Description)
+		},
+		map[string]string{"cve": f.Target, "desc": f.Description})
+}
+
+// --- Credential enumeration ---
+func enumerateCredential(p *Peekaboo, f Finding) {
+	if strings.Contains(f.Target, "_rsa") || strings.Contains(f.Target, "_ed25519") ||
+		strings.Contains(f.Target, "_ecdsa") || strings.Contains(f.Target, "_dsa") {
+		addVector(p, "ssh-key "+f.Target, "cred", f.Target,
+			"ssh -i "+f.Target+" user@target", RiskHigh,
+			func() *ExploitResult {
+				return &ExploitResult{Vector: "ssh-key", Success: true, Output: "Use: ssh -i " + f.Target + " user@target"}
+			},
+			map[string]string{"type": "ssh-private-key", "path": f.Target})
+	}
 }
 
 // Helper

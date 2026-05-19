@@ -24,6 +24,8 @@ func scanAll(p *Peekaboo) {
 	scanNFS(p)
 	scanWritablePath(p)
 	scanServices(p)
+	scanKernelCVE(p)
+	scanCredentials(p)
 }
 
 func addFinding(p *Peekaboo, source, target, desc string, risk RiskLevel, exploitable bool) {
@@ -451,4 +453,241 @@ func scanServices(p *Peekaboo) {
 			}
 		}
 	}
+}
+
+// --- Kernel CVE detection ---
+func scanKernelCVE(p *Peekaboo) {
+	cmd := exec.Command("uname", "-r")
+	out, err := cmd.Output()
+	if err != nil {
+		return
+	}
+	kernel := strings.TrimSpace(string(out))
+
+	cves := []struct {
+		cve       string
+		pattern   string
+		desc      string
+		risk      RiskLevel
+		exploitFn func() *ExploitResult
+	}{
+		{
+			cve:     "CVE-2021-4034",
+			pattern: "5.10.",
+			desc:    "PwnKit (polkit pkexec) — local privilege escalation",
+			risk:    RiskHigh,
+			exploitFn: func() *ExploitResult {
+				return exploitKernelCVE("CVE-2021-4034", "polkit pkexec LPE")
+			},
+		},
+		{
+			cve:     "CVE-2021-3156",
+			pattern: "5.11.",
+			desc:    "Baron Samedit (sudo heap overflow) — local root",
+			risk:    RiskHigh,
+			exploitFn: func() *ExploitResult {
+				return exploitKernelCVE("CVE-2021-3156", "sudo heap overflow LPE")
+			},
+		},
+		{
+			cve:     "CVE-2022-0847",
+			pattern: "5.16.",
+			desc:    "PolaKit — polkit pkexec race condition",
+			risk:    RiskHigh,
+			exploitFn: func() *ExploitResult {
+				return exploitKernelCVE("CVE-2022-0847", "polkit race condition LPE")
+			},
+		},
+		{
+			cve:     "CVE-2023-32629",
+			pattern: "6.1.",
+			desc:    "StackRot (glibc) — stack clash privilege escalation",
+			risk:    RiskMedium,
+			exploitFn: func() *ExploitResult {
+				return exploitKernelCVE("CVE-2023-32629", "StackRot LPE")
+			},
+		},
+		{
+			cve:     "CVE-2024-1086",
+			pattern: "6.6.",
+			desc:    "Netfilter nf_tables UAF — local privilege escalation",
+			risk:    RiskHigh,
+			exploitFn: func() *ExploitResult {
+				return exploitKernelCVE("CVE-2024-1086", "nf_tables UAF LPE")
+			},
+		},
+		{
+			cve:     "CVE-2023-2235",
+			pattern: "6.2.",
+			desc:    "Packet socket UAF — local privilege escalation",
+			risk:    RiskHigh,
+			exploitFn: func() *ExploitResult {
+				return exploitKernelCVE("CVE-2023-2235", "packet socket UAF LPE")
+			},
+		},
+	}
+
+	for _, cve := range cves {
+		if strings.Contains(kernel, cve.pattern) {
+			addFinding(p, "KERNEL", cve.cve,
+				fmt.Sprintf("Kernel %s vulnerable to %s — %s", kernel, cve.cve, cve.desc),
+				cve.risk, true)
+		}
+	}
+}
+
+// --- Credential scanning ---
+func scanCredentials(p *Peekaboo) {
+	scanSSHKeys(p)
+	scanConfigPasswords(p)
+	scanHistoryFiles(p)
+	scanCloudMetadata(p)
+}
+
+func scanSSHKeys(p *Peekaboo) {
+	home := os.Getenv("HOME")
+	if home == "" {
+		home = "/root"
+	}
+
+	sshDirs := []string{
+		filepath.Join(home, ".ssh"),
+		"/root/.ssh",
+	}
+
+	for _, dir := range sshDirs {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			full := filepath.Join(dir, e.Name())
+			if strings.HasSuffix(e.Name(), "_rsa") || strings.HasSuffix(e.Name(), "_ed25519") ||
+				strings.HasSuffix(e.Name(), "_ecdsa") || strings.HasSuffix(e.Name(), "_dsa") {
+				addFinding(p, "CRED", full,
+					"SSH private key found — use for lateral movement",
+					RiskHigh, true)
+			}
+			if e.Name() == "authorized_keys" {
+				data, err := os.ReadFile(full)
+				if err == nil && len(data) > 0 {
+					lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+					addFinding(p, "CRED", full,
+						fmt.Sprintf("SSH authorized_keys with %d entries", len(lines)),
+						RiskMedium, false)
+				}
+			}
+			if e.Name() == "known_hosts" {
+				data, err := os.ReadFile(full)
+				if err == nil && len(data) > 0 {
+					hosts := 0
+					for _, line := range strings.Split(string(data), "\n") {
+						line = strings.TrimSpace(line)
+						if line != "" && !strings.HasPrefix(line, "#") {
+							hosts++
+						}
+					}
+					if hosts > 0 {
+						addFinding(p, "CRED", full,
+							fmt.Sprintf("SSH known_hosts with %d hosts — lateral movement targets", hosts),
+							RiskLow, false)
+					}
+				}
+			}
+		}
+	}
+}
+
+func scanConfigPasswords(p *Peekaboo) {
+	configPaths := []struct {
+		path    string
+		pattern string
+		desc    string
+	}{
+		{"/etc/mysql/my.cnf", "password", "MySQL config with credentials"},
+		{"/etc/postgresql", "password", "PostgreSQL config with credentials"},
+		{"/etc/redis/redis.conf", "requirepass", "Redis password configuration"},
+		{"/etc/shadow", ":", "Shadow file readable"},
+		{filepath.Join(os.Getenv("HOME"), ".mysql_history"), "", "MySQL command history"},
+		{filepath.Join(os.Getenv("HOME"), ".psql_history"), "", "PostgreSQL command history"},
+		{"/etc/NetworkManager/system-connections", "psk=", "WiFi passwords in NetworkManager"},
+	}
+
+	for _, cfg := range configPaths {
+		if _, err := os.Stat(cfg.path); err != nil {
+			continue
+		}
+		if isWritableByCurrentUser(cfg.path) || isReadable(cfg.path) {
+			desc := cfg.desc
+			if cfg.pattern != "" {
+				data, err := os.ReadFile(cfg.path)
+				if err == nil && strings.Contains(string(data), cfg.pattern) {
+					desc += " (contains " + cfg.pattern + ")"
+				}
+			}
+			addFinding(p, "CRED", cfg.path, desc, RiskMedium, true)
+		}
+	}
+}
+
+func scanHistoryFiles(p *Peekaboo) {
+	home := os.Getenv("HOME")
+	if home == "" {
+		home = "/root"
+	}
+
+	histFiles := []string{
+		filepath.Join(home, ".bash_history"),
+		filepath.Join(home, ".zsh_history"),
+		filepath.Join(home, ".sh_history"),
+		"/root/.bash_history",
+		"/root/.zsh_history",
+	}
+
+	for _, hf := range histFiles {
+		data, err := os.ReadFile(hf)
+		if err != nil || len(data) == 0 {
+			continue
+		}
+		content := string(data)
+		secrets := []string{"password", "passwd", "secret", "token", "api_key", "aws_", "AKIA", "private"}
+		found := []string{}
+		for _, s := range secrets {
+			if strings.Contains(strings.ToLower(content), s) {
+				found = append(found, s)
+			}
+		}
+		if len(found) > 0 {
+			addFinding(p, "CRED", hf,
+				fmt.Sprintf("History file with potential secrets: %s", strings.Join(found, ", ")),
+				RiskHigh, true)
+		}
+	}
+}
+
+func scanCloudMetadata(p *Peekaboo) {
+	metadataURLs := []string{
+		"http://169.254.169.254/latest/meta-data/",
+		"http://169.254.169.254/latest/user-data/",
+	}
+
+	for _, url := range metadataURLs {
+		cmd := exec.Command("curl", "-s", "-m", "3", url)
+		out, err := cmd.Output()
+		if err == nil && len(out) > 0 {
+			addFinding(p, "CRED", url,
+				"Cloud metadata endpoint accessible — may contain IAM credentials",
+				RiskHigh, true)
+			break
+		}
+	}
+}
+
+func isReadable(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	f.Close()
+	return true
 }

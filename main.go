@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"sort"
 )
@@ -13,6 +14,16 @@ func main() {
 	p := &Peekaboo{Opts: opts}
 
 	printBanner()
+
+	if opts.UpdateGTFO {
+		if err := updateGTFOBins(opts); err != nil {
+			fmt.Fprintf(os.Stderr, "  [-] GTFOBins update failed: %v\n", err)
+			os.Exit(1)
+		}
+		if !opts.Exploit && opts.Vector == "" {
+			os.Exit(0)
+		}
+	}
 
 	fmt.Printf("  UID: %-10s  PID: %-8d  Host: %s\n\n",
 		amIRoot(), os.Getpid(), hostname())
@@ -45,7 +56,7 @@ func main() {
 	}
 
 	// FASE 3: Exploit
-	if opts.Exploit {
+	if opts.Exploit && !opts.DryRun {
 		if !opts.Quiet && !opts.JSON {
 			fmt.Println(colorize("\n  [3/3] Exploiting... (max risk: "+opts.MaxRisk.String()+")", AnsiCyan))
 		}
@@ -66,6 +77,13 @@ func main() {
 				p.ExportJSON()
 			}
 			os.Exit(0)
+		}
+	}
+
+	if opts.DryRun && opts.Exploit {
+		if !opts.Quiet && !opts.JSON {
+			fmt.Println(colorize("\n  [3/3] Dry-run mode — exploitation skipped", AnsiYellow))
+			fmt.Println(colorize("  [!] To exploit, remove --dry-run flag", AnsiYellow))
 		}
 	}
 
@@ -99,12 +117,20 @@ func parseFlags() Options {
 	flag.StringVar(&opts.Rooteame, "rooteame", "", "Path to rootkit.ko to load on root")
 	flag.BoolVar(&opts.Stealth, "stealth", false, "Slow scan to evade IDS")
 	flag.BoolVar(&opts.OneShot, "one-shot", false, "Stop after first successful exploit")
+	flag.StringVar(&opts.LHost, "lhost", "", "Listener host for reverse shells")
+	flag.StringVar(&opts.LPort, "lport", "4444", "Listener port for reverse shells")
+	flag.BoolVar(&opts.DryRun, "dry-run", false, "Scan and enumerate only, no exploitation")
+	flag.StringVar(&opts.LogFormat, "log", "text", "Log format: text, json")
+	flag.BoolVar(&opts.UpdateGTFO, "update-gtfobins", false, "Update GTFOBins database from upstream")
 
 	flag.Parse()
 
 	opts.MaxRisk = parseMaxRisk(risk)
 	if opts.Quiet {
 		opts.Exploit = true
+	}
+	if opts.LHost == "" {
+		opts.LHost = detectLocalIP()
 	}
 	return opts
 }
@@ -136,4 +162,19 @@ func printTopVectors(p *Peekaboo, n int) {
 	if len(exploitable) == 0 {
 		fmt.Println(colorize("    (none found)", AnsiGrey))
 	}
+}
+
+func detectLocalIP() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return "127.0.0.1"
+	}
+	for _, addr := range addrs {
+		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				return ipnet.IP.String()
+			}
+		}
+	}
+	return "127.0.0.1"
 }
